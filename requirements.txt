@@ -1,0 +1,10 @@
+opensees-py
+opsvis
+matplotlib
+numpy
+python-docx
+streamlit
+
+# This library is for Windows only to open the PDF automatically.
+# It can be commented out if deploying on a non-Windows server.
+pywin32 
