@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.env
+
+# Generated files
+assets/*.png
+assets/*.docx
+assets/*.pdf
+Memoria_Calculo.docx
+document111111111.pdf
+
+# OS specific
+.DS_Store
+Thumbs.db
