@@ -8,19 +8,19 @@ from docx import Document
 from docx.shared import Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# To handle PDF conversion (works on Windows)
+# To handle PDF conversion (works only on Windows, I need to find a way around this since Streamlit is a Linux based service)
 try:
     import win32com.client
     CAN_CONVERT_PDF = True
 except ImportError:
     CAN_CONVERT_PDF = False
 
-# --- UI Configuration ---
+#  UI Configuration 
 st.set_page_config(layout="wide", page_title="Portal Frame Modal Analysis")
 st.title("AnaStruct: Portal Frame Modal Analysis Tool")
 st.write("This tool performs a modal analysis on a 2D portal frame using OpenSees and generates a report.")
 
-# --- Define UI Inputs in the Sidebar ---
+#  Define UI Inputs in the Sidebar 
 with st.sidebar:
     st.header("Structural Parameters")
     
@@ -36,7 +36,7 @@ with st.sidebar:
     Iv = st.number_input("Beam Inertia (Iv)", value=1.0e12) # Kept high for rigid beam assumption
     E = st.number_input("Modulus of Elasticity (E)", value=2.0e10)
 
-# --- Analysis and Reporting Function ---
+# Analysis and Reporting Functions
 @st.cache_data
 def run_analysis(niveles, panos, longitud_pano, altura_nivel, m, A, Ic, Iv, E):
     """
@@ -138,7 +138,7 @@ def create_report(niveles, altura_nivel, panos, longitud_pano, NumModos, Tmodes,
     document.save(docx_path)
     return docx_path
 
-# --- Main App Logic ---
+# Main App Logic
 if st.sidebar.button("Run Analysis", type="primary"):
     Tmodes, mode_shape_paths, error = run_analysis(
         niveles, panos, longitud_pano, altura_nivel, m, A, Ic, Iv, E
