@@ -1,2 +1,2 @@
 # Porticos2D-Streamlit
-Opensees based analysis tool for portal frame structures. It simplifies complex simulations, allowing users to easily model structures and visualize key results, including shear force, bending moment, and axial force diagrams.
+Python script that automates the modal analysis of a parameterized 2D portal frame and generates a complete report with the results. It uses the powerful OpenSees structural analysis library for the calculations and then creates a professional document in both Word (.docx) and PDF formats, containing the data, plots, and vibration modes
