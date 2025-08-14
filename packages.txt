@@ -1,0 +1,7 @@
+libgfortran5
+libquadmath0
+libstdc++6
+libxrender1
+libxext6
+libx11-6
+libgl1
