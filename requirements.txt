@@ -1,4 +1,4 @@
-openseespy==3.6.0
+openseespy
 opsvis
 matplotlib
 numpy
