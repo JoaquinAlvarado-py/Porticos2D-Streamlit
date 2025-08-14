@@ -1,4 +1,4 @@
-opensees-py
+openseespy
 opsvis
 matplotlib
 numpy
@@ -9,3 +9,4 @@ streamlit
 # It can be commented out if deploying on a non-Windows server.
 
 #pywin32 
+
