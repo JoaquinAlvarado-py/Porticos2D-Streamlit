@@ -1,7 +1,12 @@
 libgfortran5
 libquadmath0
 libstdc++6
+libgcc-s1
+libblas3
+liblapack3
 libxrender1
 libxext6
 libx11-6
 libgl1
+libegl1
+libopengl0
