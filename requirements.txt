@@ -1,6 +1,6 @@
-openseespy
-opsvis
-matplotlib
-numpy
-python-docx
-streamlit
+openseespy==3.6.0.6
+opsvis==1.5.1
+matplotlib==3.8.4
+numpy==1.26.4
+python-docx==1.1.2
+streamlit==1.36.0
