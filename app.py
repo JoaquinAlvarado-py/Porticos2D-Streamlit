@@ -1,18 +1,18 @@
-# --- Configuración de Streamlit y gráficos (entorno sin GUI) ---
+# -*- coding: utf-8 -*-
+# Pórticos 2D – Análisis Modal (OpenSeesPy) – m–kg–s
+# Autor: tú :)  | Comentarios y UI en español
+
+import os
+import numpy as np
 import streamlit as st
 import matplotlib
-matplotlib.use("Agg")
+matplotlib.use("Agg")  # entorno sin GUI (Streamlit Cloud)
 import matplotlib.pyplot as plt
 
-import numpy as np
-import os
-from docx import Document
-from docx.shared import Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-
-# Importaciones seguras (OpenSeesPy y OpsVis)
+# --- Importaciones tolerantes ---
 OPS_OK, OPSVIS_OK = True, True
 OPS_IMPORT_ERROR, OPSVIS_IMPORT_ERROR = "", ""
+
 try:
     import openseespy.opensees as ops
 except Exception as e:
@@ -23,245 +23,170 @@ try:
 except Exception as e:
     OPSVIS_OK, OPSVIS_IMPORT_ERROR = False, str(e)
 
-# Conversión a PDF (solo en Windows; inofensivo en Linux)
-try:
-    import win32com.client  # type: ignore
-    CAN_CONVERT_PDF = True
-except Exception:
-    CAN_CONVERT_PDF = False
-
-st.set_page_config(page_title="Pórticos 2D – Modos", layout="centered")
-
-
-def run_analysis(niveles, altura_nivel, panos, luz_viga,
-                 m, E, A_col, Iz_col, A_viga, Iz_viga):
+# -----------------------------------------------------------------------------
+# Núcleo de análisis
+# -----------------------------------------------------------------------------
+def armar_y_analizar(niveles:int, panos:int,
+                     h_nivel:float, luz_viga:float,
+                     m_nodal:float,
+                     E:float, A_col:float, Iz_col:float, A_viga:float, Iz_viga:float,
+                     modos:int|None=None):
     """
-    Análisis modal del pórtico 2D usando OpenSeesPy.
-    Unidades: m–kg–s (E en Pa, masas en kg, áreas en m², inercias en m⁴).
-    La GEOMETRÍA horizontal se define con la 'luz de viga' (espaciado en X).
-    Retorna: (Tmodes (np.ndarray), mode_shape_paths (list[str]), error_msg (str|None))
+    Construye un pórtico 2D regular y hace un análisis modal.
+    Unidades: m–kg–s (E en Pa).
+    - niveles: cantidad de pisos
+    - panos: cantidad de paños
+    - h_nivel: altura por nivel [m]
+    - luz_viga: separación entre ejes de columnas [m]
+    - m_nodal: masa concentrada en nodos de cada nivel [kg]
+    - E: módulo de elasticidad [Pa]
+    - A_col, Iz_col, A_viga, Iz_viga: propiedades geométricas [m²], [m⁴]
+    - modos: nº de modos a extraer (por defecto = niveles)
+    Retorna: (T, rutas_imagenes, msg_error)
     """
     if not OPS_OK:
-        return None, None, (
-            "OpenSeesPy no está disponible en este entorno.\n\n"
-            f"Detalle de importación: {OPS_IMPORT_ERROR}"
-        )
+        return None, None, ("OpenSeesPy no está disponible.\n" +
+                            f"Detalle de importación: {OPS_IMPORT_ERROR}")
+
+    # nº de modos por defecto = nº de pisos
+    n_modos = max(1, int(niveles if modos is None else min(modos, niveles)))
 
     os.makedirs("assets", exist_ok=True)
 
-    # 1) MODELO
     try:
         ops.wipe()
-        ops.model("basic", "-ndm", 2, "-ndf", 3)
+        ops.model("basic", "-ndm", 2, "-ndf", 3)  # 2D, 3 DOF por nodo
     except Exception as e:
-        return None, None, f"Error iniciando el modelo OpenSees: {e}"
+        return None, None, f"Error iniciando modelo: {e}"
 
-    # 2) NODOS Y APOYOS (usar luz_viga para espaciar columnas en X)
+    # Nodos: base empotrada (fix 1,1,1). Masa en nodos de niveles superiores.
     nodos = {}
-    contador_nodo = 1
-    for i in range(niveles + 1):
-        for j in range(panos + 1):
-            x = j * luz_viga        # <<---- GEOMETRÍA en base a la luz de viga
-            y = i * altura_nivel
+    tag = 1
+    for i in range(niveles + 1):         # 0..niveles
+        y = i * h_nivel
+        for j in range(panos + 1):       # 0..panos
+            x = j * luz_viga            # << geometría según luz
             if i == 0:
-                ops.node(contador_nodo, x, y)
-                ops.fix(contador_nodo, 1, 1, 1)
+                ops.node(tag, x, y)
+                ops.fix(tag, 1, 1, 1)
             else:
-                # Masa concentrada en DOF x,y (masa rotacional = 0)
-                ops.node(contador_nodo, x, y, "-mass", m, m, 0.0)
-            nodos[(i, j)] = contador_nodo
-            contador_nodo += 1
+                ops.node(tag, x, y, "-mass", m_nodal, m_nodal, 0.0)
+            nodos[(i, j)] = tag
+            tag += 1
 
-    # 3) ELEMENTOS (columnas y vigas)
+    # Transformación geométrica y elementos
     ops.geomTransf("Linear", 1)
 
     # Columnas
+    eid = 1000
     for i in range(niveles):
         for j in range(panos + 1):
             ni = nodos[(i, j)]
             nj = nodos[(i + 1, j)]
-            ops.element("elasticBeamColumn", 1000 + i * (panos + 1) + j,
-                        ni, nj, A_col, E, Iz_col, 1, "-mass", 0.0)
+            ops.element("elasticBeamColumn", eid, ni, nj, A_col, E, Iz_col, 1, "-mass", 0.0)
+            eid += 1
 
     # Vigas
     for i in range(1, niveles + 1):
         for j in range(panos):
             ni = nodos[(i, j)]
             nj = nodos[(i, j + 1)]
-            ops.element("elasticBeamColumn", 2000 + (i - 1) * panos + j,
-                        ni, nj, A_viga, E, Iz_viga, 1, "-mass", 0.0)
+            ops.element("elasticBeamColumn", eid, ni, nj, A_viga, E, Iz_viga, 1, "-mass", 0.0)
+            eid += 1
 
-    # 4) AUTOVALORES / PERÍODOS
-    NumModos = max(1, niveles)
+    # Autovalores y periodos
     try:
-        eigen_values = np.array(ops.eigen("-genBandArpack", NumModos), dtype=float)
-        eigen_values = np.where(eigen_values > 0, eigen_values, np.nan)  # proteger
-        omega = np.sqrt(eigen_values)
-        Tmodes = 2 * np.pi / omega
+        lambdas = np.array(ops.eigen("-genBandArpack", n_modos), dtype=float)
+        lambdas = np.where(lambdas > 0, lambdas, np.nan)
+        omega = np.sqrt(lambdas)
+        T = 2*np.pi/omega
     except Exception as e:
-        return None, None, f"Error en el análisis modal (eigen): {e}"
+        return None, None, f"Error en eigen: {e}"
 
-    # 5) FORMAS MODALES (si opsvis está disponible)
-    mode_shape_paths = []
+    # Formas modales (si hay opsvis)
+    rutas = []
     if OPSVIS_OK:
-        fmt_model = {"color": "b", "linestyle": "-", "linewidth": 2}
-        fmt_undefo = {"color": "g", "linestyle": "--", "linewidth": 0.7}
-        for i in range(NumModos):
+        fmt_defo = {"color": "b", "linestyle": "-", "linewidth": 2}
+        fmt_und  = {"color": "g", "linestyle": "--", "linewidth": 0.7}
+        for k in range(n_modos):
             try:
-                opsv.plot_mode_shape(i + 1, endDispFlag=0,
-                                     fmt_undefo=fmt_undefo, fmt_defo=fmt_model)
-                plt.title(f"$T_{i+1}$: {Tmodes[i]:.4f} s", fontweight="bold")
-                path = f"assets/modo_{i+1}.png"
-                plt.savefig(path, bbox_inches="tight", dpi=160)
+                opsv.plot_mode_shape(k+1, endDispFlag=0, fmt_undefo=fmt_und, fmt_defo=fmt_defo)
+                plt.title(f"$T_{k+1}$: {T[k]:.4f} s", fontweight="bold")
+                ruta = f"assets/modo_{k+1}.png"
+                plt.savefig(ruta, dpi=160, bbox_inches="tight")
                 plt.close()
-                mode_shape_paths.append(path)
+                rutas.append(ruta)
             except Exception:
                 plt.close()
-                mode_shape_paths.append("")  # continúa aunque un modo no se grafique
+                rutas.append("")
+    return T, rutas, None
 
-    return Tmodes, mode_shape_paths, None
-
-
-def create_report(niveles, altura_nivel, panos, luz_viga,
-                  NumModos, Tmodes, mode_shape_paths,
-                  m, E, A_col, Iz_col, A_viga, Iz_viga):
-    """Genera el reporte DOCX (unidades m–kg–s) y retorna la ruta."""
-    document = Document()
-    titulo = document.add_heading("ANASTRUCT CALCULATION REPORT", 0)
-    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    p = document.add_paragraph("Report generated by ")
-    p.add_run("AnaStruct Python Tool. ").bold = True
-    p.add_run("Modal analysis of a 2D portal frame.\n")
-
-    document.add_paragraph("Units: m – kg – s; E in Pa (N/m²).")
-
-    document.add_heading("Inputs", level=1)
-    table = document.add_table(rows=0, cols=2)
-
-    def row(k, v):
-        r = table.add_row().cells
-        r[0].text, r[1].text = str(k), str(v)
-
-    # Geometría (en base a luz de viga)
-    row("Levels [-]", niveles)
-    row("Level height [m]", altura_nivel)
-    row("Bays [-]", panos)
-    row("Beam span [m]", luz_viga)
-
-    # Propiedades y masa (m–kg–s)
-    row("Mass per node [kg]", m)
-    row("E [Pa]", E)
-    row("A column [m²]", A_col)
-    row("Iz column [m⁴]", Iz_col)
-    row("A beam [m²]", A_viga)
-    row("Iz beam [m⁴]", Iz_viga)
-
-    row("Number of modes [-]", NumModos)
-
-    document.add_heading("Results", level=1)
-    for i in range(NumModos):
-        par = document.add_paragraph()
-        par.add_run(f"T{i+1} = ").bold = True
-        par.add_run(f"{Tmodes[i]:.4f} s")
-
-    document.add_heading("Mode Shapes", level=1)
-    for i, pth in enumerate(mode_shape_paths, start=1):
-        document.add_paragraph(f"Mode {i}")
-        try:
-            if pth and os.path.exists(pth):
-                document.add_picture(pth, width=Cm(12))
-            else:
-                document.add_paragraph("(Imagen no disponible en este entorno)")
-        except Exception:
-            document.add_paragraph(f"(No se pudo insertar la imagen: {pth})")
-
-    os.makedirs("assets", exist_ok=True)
-    docx_path = os.path.abspath("assets/Calculation_Report.docx")
-    document.save(docx_path)
-    return docx_path
-
-
-# --- INTERFAZ ---
+# -----------------------------------------------------------------------------
+# UI Streamlit
+# -----------------------------------------------------------------------------
+st.set_page_config(page_title="Pórticos 2D – Modal (OpenSeesPy)", layout="wide")
 st.title("Pórticos 2D – Análisis Modal (OpenSeesPy)")
 st.caption("Unidades: m – kg – s. E en Pa (N/m²). Masas en kg.")
 
 with st.sidebar:
-    st.header("Parámetros")
+    st.header("Parámetros de geometría")
+    niveles = st.number_input("Niveles (pisos)", min_value=1, value=3, step=1)
+    panos   = st.number_input("Paños", min_value=1, value=2, step=1)
+    h_nivel = st.number_input("Altura por nivel h [m]", min_value=0.0, value=3.0, step=0.1, format="%.2f")
+    luz     = st.number_input("Luz de viga L [m] (separación entre ejes de columnas)",
+                              min_value=0.0, value=6.0, step=0.1, format="%.2f")
 
-    # Sin límites superiores (solo mínimos lógicos)
-    niveles = st.number_input("Niveles", min_value=1, value=3, step=1)
-    altura_nivel = st.number_input("Altura por nivel [m]", min_value=0.0, value=3.0, step=0.1, format="%.2f")
-    panos = st.number_input("Paños", min_value=1, value=2, step=1)
-
-    # GEOMETRÍA HORIZONTAL DEL MODELO:
-    luz_viga = st.number_input("Luz de viga [m] (separación entre ejes de columnas)", 
-                               min_value=0.0, value=6.0, step=0.1, format="%.2f")
-
-    st.subheader("Propiedades y masa (m–kg–s)")
-    m = st.number_input("Masa nodal [kg]", min_value=0.0, value=1000.0, step=10.0, format="%.1f")
-    E = st.number_input("E [Pa]", min_value=1e4, value=2.0e10, step=1e9, format="%.0f")
-    A_col = st.number_input("A columna [m²]", min_value=0.0, value=0.09, step=0.001, format="%.3f")
-    Iz_col = st.number_input("Iz columna [m⁴]", min_value=0.0, value=0.000675, step=0.000001, format="%.6f")
-    A_viga = st.number_input("A viga [m²]", min_value=0.0, value=0.09, step=0.001, format="%.3f")
+    st.header("Propiedades y masa (m–kg–s)")
+    m_nodal = st.number_input("Masa nodal [kg]", min_value=0.0, value=1000.0, step=10.0, format="%.1f")
+    E       = st.number_input("Módulo E [Pa]", min_value=1e6, value=2.0e10, step=1e9, format="%.0f")
+    A_col   = st.number_input("A columna [m²]", min_value=0.0, value=0.09, step=0.001, format="%.3f")
+    Iz_col  = st.number_input("Iz columna [m⁴]", min_value=0.0, value=0.000675, step=0.000001, format="%.6f")
+    A_viga  = st.number_input("A viga [m²]", min_value=0.0, value=0.09, step=0.001, format="%.3f")
     Iz_viga = st.number_input("Iz viga [m⁴]", min_value=0.0, value=1.0e12, step=1.0e10, format="%.0f")
+
+    st.header("Modos")
+    n_modos_ui = st.number_input("Nº de modos a calcular (≤ niveles)",
+                                 min_value=1, max_value=int(niveles), value=int(niveles), step=1)
 
     st.markdown("---")
     if OPS_OK:
         st.success("OpenSeesPy ✓ disponible")
     else:
-        st.error("OpenSeesPy no está disponible en este runtime.")
+        st.error("OpenSeesPy no está disponible en este entorno.")
+        st.stop()
+
     if not OPSVIS_OK:
-        st.info("OpsVis no está disponible: las imágenes de modos podrían no mostrarse.")
+        st.info("OpsVis no está disponible: se omitirán imágenes de modos.")
 
-    run = st.button("Calcular")
+    lanzar = st.button("Calcular")
 
-if run:
+# Resultados
+if lanzar:
     with st.spinner("Ejecutando análisis modal..."):
-        Tmodes, mode_shape_paths, err = run_analysis(
-            int(niveles), float(altura_nivel), int(panos), float(luz_viga),
-            float(m), float(E), float(A_col), float(Iz_col), float(A_viga), float(Iz_viga)
+        T, rutas, err = armar_y_analizar(
+            int(niveles), int(panos),
+            float(h_nivel), float(luz),
+            float(m_nodal),
+            float(E), float(A_col), float(Iz_col), float(A_viga), float(Iz_viga),
+            modos=int(n_modos_ui)
         )
 
     if err:
         st.error(err)
     else:
-        # 1) Períodos
         st.subheader("Períodos")
-        for i, T in enumerate(Tmodes, start=1):
-            st.write(f"**T{i} = {T:.4f} s**")
+        for i, ti in enumerate(T, start=1):
+            st.write(f"**T{i} = {ti:.4f} s**")
 
-        # 2) Formas Modales
         st.subheader("Formas Modales")
-        if OPSVIS_OK and any(mode_shape_paths):
+        if OPSVIS_OK and any(rutas):
+            # grilla 2 columnas
             cols = st.columns(2)
-            for i, pth in enumerate(mode_shape_paths):
-                if pth and os.path.exists(pth):
+            for i, ruta in enumerate(rutas):
+                if ruta and os.path.exists(ruta):
                     with cols[i % 2]:
-                        st.image(pth, caption=f"Modo {i+1}", use_column_width=True)
+                        st.image(ruta, caption=f"Modo {i+1}", use_column_width=True)
         else:
-            st.info("Las formas modales no están disponibles en este entorno.")
-
-        # 3) Reporte DOCX (y PDF en Windows)
-        docx_path = create_report(
-            int(niveles), float(altura_nivel), int(panos), float(luz_viga),
-            len(Tmodes), Tmodes, mode_shape_paths,
-            float(m), float(E), float(A_col), float(Iz_col), float(A_viga), float(Iz_viga)
-        )
-        with open(docx_path, "rb") as f:
-            st.download_button("Descargar Reporte (DOCX)", f, file_name="Calculation_Report.docx")
-
-        if CAN_CONVERT_PDF:
-            try:
-                word = win32com.client.Dispatch("Word.Application")
-                doc = word.Documents.Open(os.path.abspath(docx_path))
-                pdf_path = os.path.abspath("assets/Calculation_Report.pdf")
-                doc.SaveAs(pdf_path, FileFormat=17)
-                doc.Close()
-                word.Quit()
-                with open(pdf_path, "rb") as f:
-                    st.download_button("Descargar Reporte (PDF)", f, file_name="Calculation_Report.pdf")
-            except Exception as e:
-                st.warning(f"No se pudo convertir a PDF automáticamente: {e}")
+            st.info("No se muestran imágenes (opsvis no disponible).")
 else:
-    st.info("Configura parámetros en la barra lateral y presiona **Calcular**.")
+    st.info("Ajusta los parámetros en la barra lateral y presiona **Calcular**.")
