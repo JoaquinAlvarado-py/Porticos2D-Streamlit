@@ -1,5 +1,5 @@
 openseespy==3.7.1.2
-opsvis==1.5.1
+opsvis==1.2.30
 numpy==1.26.4
 matplotlib==3.8.4
 python-docx==1.1.2
