@@ -179,27 +179,30 @@ st.caption("Genera periodos y formas modales, más un reporte DOCX (y PDF en Win
 
 with st.sidebar:
     st.header("Parámetros")
-    niveles = st.number_input("Niveles", 1, 12, 3)
-    altura_nivel = st.number_input("Altura por nivel [m]", 1.0, 10.0, 3.0, step=0.1, format="%.2f")
-    panos = st.number_input("Paños", 1, 10, 2)
-    longitud_pano = st.number_input("Longitud de paño [m]", 1.0, 20.0, 5.0, step=0.1, format="%.2f")
+
+    # Sin límite superior (solo mínimo lógico)
+    niveles = st.number_input("Niveles", min_value=1, value=3, step=1)
+    altura_nivel = st.number_input("Altura por nivel [m]", min_value=0.0, value=3.0, step=0.1, format="%.2f")
+    panos = st.number_input("Paños", min_value=1, value=2, step=1)
+    longitud_pano = st.number_input("Longitud de paño [m]", min_value=0.0, value=5.0, step=0.1, format="%.2f")
 
     st.subheader("Propiedades y masa")
-    m = st.number_input("Masa nodal [ton]", 0.01, 100.0, 2.0, step=0.1, format="%.2f")
-    # Nota: si quieres masa en kN·s²/m, convierte aquí; se mantiene como en tu modelo original.
-    E = st.number_input("E [kN/m²]", 1e4, 3.0e8, 2.1e8, step=1e6, format="%.0f")
-    A_col = st.number_input("A columna [m²]", 0.001, 5.0, 0.040, step=0.001, format="%.3f")
-    Iz_col = st.number_input("Iz columna [m⁴]", 1e-5, 10.0, 0.080, step=0.001, format="%.3f")
-    A_viga = st.number_input("A viga [m²]", 0.001, 5.0, 0.030, step=0.001, format="%.3f")
-    Iz_viga = st.number_input("Iz viga [m⁴]", 1e-5, 10.0, 0.050, step=0.001, format="%.3f")
+
+    # Todos sin límite superior
+    m = st.number_input("Masa nodal [ton]", min_value=0.0, value=2.0, step=0.1, format="%.2f")
+    E = st.number_input("E [kN/m²]", min_value=0.0, value=2.1e8, step=1e6, format="%.0f")
+    A_col = st.number_input("A columna [m²]", min_value=0.0, value=0.040, step=0.001, format="%.3f")
+    Iz_col = st.number_input("Iz columna [m⁴]", min_value=0.0, value=0.080, step=0.001, format="%.3f")
+    A_viga = st.number_input("A viga [m²]", min_value=0.0, value=0.030, step=0.001, format="%.3f")
+    Iz_viga = st.number_input("Iz viga [m⁴]", min_value=0.0, value=0.050, step=0.001, format="%.3f")
 
     st.markdown("---")
     if OPS_OK:
         st.success("OpenSeesPy ✓ disponible")
     else:
         st.error("OpenSeesPy no está disponible en este runtime.\n\n"
-                 "Si estás en Streamlit Cloud, fija Python 3.11 en runtime.txt y "
-                 "usa versiones compatibles en requirements.txt.")
+                 "Si estás en Streamlit Cloud, añade `runtime.txt` con `3.11` y usa "
+                 "`openseespy` en `requirements.txt` (sin guion).")
     run = st.button("Calcular")
 
 if run:
